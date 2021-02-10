@@ -22,6 +22,10 @@ Class BughouseData
   Public Shared ReadOnly SLComment = ";"
   Public Shared ReadOnly OpenComment = "{"
   Public Shared ReadOnly CloseComment = "}"
+  Public Shared ReadOnly CheckmateSuffix = "#"
+  Public Shared ReadOnly CheckSuffix = "+"
+  Public Shared ReadOnly InvalidSuffix = SLComment
+  Public Shared ReadOnly NoSuffix = ""
   Public Const NRows = 8
   Public Const NColumns = 8
 
@@ -101,7 +105,7 @@ Class BughouseData
       End If
 
       If Char.IsDigit(fen(index)) And fen(index) <> "0"c
-        For i = 0 To Val(fen(index)) - 1
+        For i = 0 To Convert.ToInt32(fen(index)) - 1
           If cursorX >= NColumns
             Return False
           End If
@@ -184,13 +188,11 @@ Class BughouseData
     If fen(index) = "-"c
       tempData.enPassant = "-"
       index += 1
-    Else
-      If index + 1 >= fen.Length _
+    ElseIf index + 1 >= fen.Length _
          OrElse (fen(index) >= "a"c And fen(index) <= "h"c) _
          OrElse (fen(index + 1) >= "1"c And fen(index + 1) <= "8"c)
-        tempData.enPassant = fen.SubString(index, 2)
-        index += 2
-      End If
+      tempData.enPassant = fen.SubString(index, 2)
+      index += 2
     End If
 
     If Not Char.IsWhiteSpace(fen(index))
@@ -208,13 +210,14 @@ Class BughouseData
       tempData.halfmove = 0
       index += 1
     Else
-      tempData.halfmove = Val(fen(index))
+      tempData.halfmove = Convert.ToInt32(fen(index)) - Convert.ToInt32("0"c)
       index += 1
       While index < fen.Length AndAlso Char.IsDigit(fen(index))
-        If (Integer.MaxValue - Val(fen(index))) / 10 < tempData.halfmove
+        Dim digitval = Convert.ToInt32(fen(index)) - Convert.ToInt32("0"c)
+        If (Integer.MaxValue - digitval) / 10 < tempData.halfmove
           Return False
         End If
-        tempData.halfmove = tempData.halfmove * 10 + Val(fen(index))
+        tempData.halfmove = tempData.halfmove * 10 + digitval
         index += 1
       End While
     End If
@@ -234,13 +237,14 @@ Class BughouseData
       tempData.fullmove = 0
       index += 1
     Else
-      tempData.fullmove = Val(fen(index))
+      tempData.fullmove = Convert.ToInt32(fen(index)) - Convert.ToInt32("0"c)
       index += 1
       While index < fen.Length AndAlso Char.IsDigit(fen(index))
-        If (Integer.MaxValue - Val(fen(index))) / 10 < tempData.fullmove
+        Dim digitval = Convert.ToInt32(fen(index)) - Convert.ToInt32("0"c)
+        If (Integer.MaxValue - digitval) / 10 < tempData.fullmove
           Return False
         End If
-        tempData.fullmove = tempData.fullmove * 10 + Val(fen(index))
+        tempData.fullmove = tempData.fullmove * 10 + digitval
         index += 1
       End While
     End If
@@ -267,15 +271,398 @@ Class BughouseData
   End Function
 #End If
 
-  ' Return Nothing iff move can't legally made.
-  ' Otherwise, return the SAN suffix ("#", "+"), or SLComment for no suffix.
+  ' Return the square of attacker if there is just
+  ' one attacker, or empty string if ambiguous
+  ' or nonexistant.
+  Public Function FindAttacker(piece As Char, destSquare As String, disambiguation As String, capture As Boolean)
+    ' Lots of inlining to keep logic simple
+    ' Note that there are some cases I optimize
+    ' when I know it's impossible to have ambiguities 
+    ' (king, pawn w/o capture)
+    Dim srcSquare = ""
+    Dim trySrc = ""
+    Dim dstx, dsty As Integer
+    Dim srcy, srcx As Integer
+    Dim comparePiece = If(color = "w"c, piece, Char.ToLower(piece))
+    Dim pawnSgn = If(color = "b"c, -1, 1)
+    Dim pieceCaptured = capture
+
+    If destSquare.Length <> 2 Or Not Char.IsUpper(piece)
+      Return ""
+    End If
+    dstx = Convert.ToInt32(destSquare(0)) - Convert.ToInt32("a"c)
+    dsty =  Convert.ToInt32("8"c) - Convert.ToInt32(destSquare(1))
+    If dstx >= 8 Or dstx < 0 Or dsty >= 8 Or dsty < 0
+      Return ""
+    End If
+    Dim dstPiece = board(dsty, dstx)
+    If (dstPiece <> " "c Xor capture) Or (dstPiece <> " "c And Char.IsUpper(dstPiece) = Char.IsUpper(comparePiece))
+      Return ""
+    End If
+
+    If piece = "K"c
+      srcx = dstx + 1
+      srcy = dsty + 1
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+      End If
+      srcx = dstx
+      srcy = dsty + 1
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+      End If
+      srcx = dstx - 1
+      srcy = dsty + 1
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+      End If
+      srcx = dstx + 1
+      srcy = dsty
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+      End If
+      srcx = dstx - 1
+      srcy = dsty
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+      End If
+      srcx = dstx + 1
+      srcy = dsty - 1
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+      End If
+      srcx = dstx
+      srcy = dsty - 1
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+      End If
+      srcx = dstx - 1
+      srcy = dsty - 1
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+      End If
+    End If
+    If piece = "R"c Or piece = "Q"c
+      srcx = dstx
+      srcy = dsty + 1
+      While srcy < 8
+        If board(srcy, srcx) = comparePiece 
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+          Exit While
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If
+          srcSquare = trySrc
+        End If
+        ElseIf board(srcy, srcx) <> " "c
+          Exit While
+        End If
+        srcy += 1
+      End While
+      srcx = dstx
+      srcy = dsty - 1
+      While srcy >= 0
+        If board(srcy, srcx) = comparePiece 
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+          Exit While
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If
+            srcSquare = trySrc
+          End If
+        ElseIf board(srcy, srcx) <> " "c
+          Exit While
+        End If
+        srcy -= 1
+      End While
+      srcx = dstx + 1
+      srcy = dsty
+      While srcx < 8
+        If board(srcy, srcx) = comparePiece 
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+          Exit While
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If
+            srcSquare = trySrc
+          End If
+        Else
+        If board(srcy, srcx) <> " "c
+          Exit While
+        End If
+        End If
+        srcx += 1
+      End While
+      srcy = dsty
+      srcx = dstx - 1
+      While srcx >= 0
+        If board(srcy, srcx) = comparePiece 
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+          Exit While
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If
+          srcSquare = trySrc
+        End If
+        ElseIf board(srcy, srcx) <> " "c
+          Exit While
+        End If
+        srcx -= 1
+      End While
+    End If
+    If piece = "B"c Or piece = "Q"c
+      srcx = dstx + 1
+      srcy = dsty + 1
+      While srcx < 8 And srcy < 8
+        If board(srcy, srcx) = comparePiece 
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+          Exit While
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If
+          srcSquare = trySrc
+        End If
+        ElseIf board(srcy, srcx) <> " "c
+          Exit While
+        End If
+        srcx += 1
+        srcy += 1
+      End While
+      srcx = dstx - 1
+      srcy = dsty + 1
+      While srcx >= 0 And srcy < 8
+        If board(srcy, srcx) = comparePiece 
+          trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+          If disambiguation <> "" And trySrc.Contains(disambiguation)
+            srcSquare = trySrc
+            disambiguation = Nothing
+            Exit While
+          Else
+            If disambiguation = "" And srcSquare <> ""
+              Return ""
+            End If
+            srcSquare = trySrc
+          End If
+        ElseIf board(srcy, srcx) <> " "c
+          Exit While
+        End If
+        srcx -= 1
+        srcy += 1
+      End While
+      srcx = dstx + 1
+      srcy = dsty - 1
+      While srcx < 8 And srcy >= 0
+        If board(srcy, srcx) = comparePiece 
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+          Exit While
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If
+          srcSquare = trySrc
+        End If
+        ElseIf board(srcy, srcx) <> " "c
+        Exit While
+        End If
+        srcx += 1
+        srcy -= 1
+      End While
+      srcx = dsty - 1
+      srcy = dstx - 1
+      While srcx >= 0 And srcy >= 0
+        If board(srcy, srcx) = comparePiece 
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+          Exit While
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If
+          srcSquare = trySrc
+        End If
+        ElseIf board(srcy, srcx) <> " "c
+        Exit While
+        End If
+        srcx -= 1
+        srcy -= 1
+      End While
+    End If
+    If piece = "N"c
+      srcx = dstx + 1
+      srcy = dsty + 2
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = ""
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If 
+          srcSquare = trySrc
+        End If
+      End If
+      srcx = dstx - 1
+      srcy = dsty + 2
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If 
+          srcSquare = trySrc
+        End If
+      End If
+      srcx = dstx + 1
+      srcy = dsty - 2
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = ""
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If 
+          srcSquare = trySrc
+        End If
+      End If
+      srcx = dstx - 1
+      srcy = dsty - 2
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> "" And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = ""
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If 
+          srcSquare = trySrc
+        End If
+      End If
+      srcx = dstx + 2
+      srcy = dsty + 1
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece  
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> Nothing And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If 
+          srcSquare = trySrc
+        End If
+      End If
+      srcx = dstx - 2
+      srcy = dsty + 1
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece  
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> Nothing And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If 
+          srcSquare = trySrc
+        End If
+      End If
+      srcx = dstx + 2
+      srcy = dsty - 1
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece  
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> Nothing And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If 
+          srcSquare = trySrc
+        End If
+      End If
+      srcx = dstx - 2
+      srcy = dsty - 1
+      If (srcx >= 0 And srcx < 8) AndAlso (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece   
+        trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        If disambiguation <> Nothing And trySrc.Contains(disambiguation)
+          srcSquare = trySrc
+          disambiguation = Nothing
+        Else
+          If disambiguation = "" And srcSquare <> ""
+            Return ""
+          End If 
+          srcSquare = trySrc
+        End If
+      End If
+    End If
+    If piece = "P"c
+      If pieceCaptured
+        ' Fill in later
+      Else
+        srcx = dstx
+        srcy = dsty + pawnSgn
+        If (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+          srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+        End If
+        If (dsty = 4 And comparePiece = "P"c) Or (dsty = 3 And comparePiece = "p"c)
+          srcy += pawnSgn
+          If (srcy >= 0 And srcy < 8) AndAlso board(srcy, srcx) = comparePiece
+            srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
+          End If
+        End If
+        If board(dsty, dstx) <> " "c
+          Return ""
+        End If
+      End If
+    End If
+
+    If disambiguation <> "" Or srcSquare.Length <> 2
+      Return ""
+    End If
+    Return srcSquare
+  End Function
+
+  ' Return InvalidSuffix iff move can't legally made.
+  ' Otherwise, return the SAN suffix ("#", "+"), 
+  ' or special string for no suffix ("", probably).
   ' This is in SAN notation minus check(mate) suffix.
   ' If not, don't change underlying struct.
   Public Function MakeMove(sanNoSuffix As String)
     Dim piece = Convert.ToChar(0)
     Dim disambiguation As String = ""
-    Dim srcSquare As String = Nothing
-    Dim destSquare As String = Nothing
+    Dim srcSquare As String = ""
+    Dim destSquare As String = ""
     Dim promotionPiece = Convert.ToChar(0)
     Dim saveCapture = " "c
     Dim pieceDropped = False
@@ -289,9 +676,9 @@ Class BughouseData
     ' Try to get castling done right off the bat.
     Select Case sanNoSuffix
       Case "O-O"
-        Return ""
+        Return NoSuffix
       Case "O-O-O"
-        Return ""
+        Return NoSuffix
     End Select
 
     ' First, get the piece specified, if it is specified
@@ -334,7 +721,7 @@ Class BughouseData
       index += 2
     Else
       If disambiguation.Length <> 2
-        Return Nothing
+        Return InvalidSuffix
       End If
       destSquare = disambiguation
       disambiguation = ""
@@ -345,7 +732,7 @@ Class BughouseData
     If index + 1 < sanNoSuffix.Length AndAlso sanNoSuffix(index) = "="c
       If Not PieceNames.ToUpper.Contains(sanNoSuffix(index + 1)) _
            Or sanNoSuffix(index + 1) = "P"c Or sanNoSuffix(index + 1) = "K"c
-        Return Nothing
+        Return InvalidSuffix
       End If
       promotionPiece = sanNoSuffix(index + 1)
       index += 2
@@ -355,276 +742,40 @@ Class BughouseData
       index += 1
     End While
     If index <> sanNoSuffix.Length
-      Return Nothing
-    End If    
+      Return InvalidSuffix
+    End If
 
-    Dim dstx = Convert.ToInt32(destSquare(0)) - Convert.ToInt32("a"c)
-    Dim dsty = 8 - Val(destSquare(1))
-    Dim srcx As Integer, srcy As Integer
-    Dim trySrc As String
-    Dim pawnSgn As Integer = If(color = "w"c, 1, -1)
+    '
     If pieceDropped
-      ' A whole other can of worms you shouldn't worry about for now.
-      If piece = Convert.ToChar(0) Or pieceCaptured
-        Return Nothing
-      End If
     Else
       If piece = "P"c
-        Return Nothing
-      End If
-      If piece = Convert.ToChar(0)
+        Return InvalidSuffix
+      ElseIf piece = Convert.ToChar(0)
         piece = "P"c
       End If
-      saveCapture = board(dsty, dstx)
-      If pieceCaptured
-        If (Char.IsUpper(saveCapture) And color = "w"c) Or (Char.IsLower(saveCapture) And color = "b"c) _
-              Or saveCapture = " "c
-          Return Nothing
-        End If
-      Else
-        If saveCapture <> " "c
-          Return Nothing
-        End If
+      srcSquare = FindAttacker(piece, destSquare, disambiguation, pieceCaptured)
+      If srcSquare = ""
+        Return InvalidSuffix
       End If
-
-      ' Lots of inlining to keep logic simple
-      ' Note that there are some cases I optimize
-      ' when I know it's impossible to have ambiguities 
-      ' (king, pawn w/o capture)
-      Select Case piece
-        Case "K"c
-          srcx = dstx + 1
-          srcy = dsty + 1
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "K"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "k"c And color = "b"c)) 
-            srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-          End If
-          srcx = dstx
-          srcy = dsty + 1
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "K"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "k"c And color = "b"c)) 
-            srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-          End If
-          srcx = dstx - 1
-          srcy = dsty + 1
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "K"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "k"c And color = "b"c))
-            srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-          End If
-          srcx = dstx + 1
-          srcy = dsty
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "K"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "k"c And color = "b"c)) 
-            srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-          End If
-          srcx = dstx - 1
-          srcy = dsty
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "K"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "k"c And color = "b"c)) 
-            srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-          End If
-          srcx = dstx + 1
-          srcy = dsty - 1
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8)  _
-              And ((board(srcy, srcx) = "K"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "k"c And color = "b"c)) 
-            srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-          End If
-          srcx = dstx
-          srcy = dsty - 1
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "K"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "k"c And color = "b"c)) 
-            srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-          End If
-          srcx = dstx - 1
-          srcy = dsty - 1
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "K"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "k"c And color = "b"c)) 
-            srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-          End If
-        Case "Q"c
-        Case "R"c
-        Case "B"c
-        Case "N"c
-          srcx = dstx + 1
-          srcy = dsty + 2
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "N"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "n"c And color = "b"c)) 
-            trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-            If disambiguation <> Nothing And trySrc.Contains(disambiguation)
-              srcSquare = trySrc
-              disambiguation = Nothing
-            Else
-              If disambiguation = Nothing And Not srcSquare Is Nothing
-                Return Nothing
-              End If 
-              srcSquare = trySrc
-            End If
-          End If
-          srcx = dstx - 1
-          srcy = dsty + 2
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "N"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "n"c And color = "b"c)) 
-            trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-            If disambiguation <> Nothing And trySrc.Contains(disambiguation)
-              srcSquare = trySrc
-              disambiguation = Nothing
-            Else
-              If disambiguation = Nothing And Not srcSquare Is Nothing
-                Return Nothing
-              End If 
-              srcSquare = trySrc
-            End If
-          End If
-          srcx = dstx + 1
-          srcy = dsty - 2
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "N"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "n"c And color = "b"c)) 
-            trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-            If disambiguation <> Nothing And trySrc.Contains(disambiguation)
-              srcSquare = trySrc
-              disambiguation = Nothing
-            Else
-              If disambiguation = Nothing And Not srcSquare Is Nothing
-                Return Nothing
-              End If 
-              srcSquare = trySrc
-            End If
-          End If
-          srcx = dstx - 1
-          srcy = dsty - 2
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "N"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "n"c And color = "b"c))  
-            trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-            If disambiguation <> Nothing And trySrc.Contains(disambiguation)
-              srcSquare = trySrc
-              disambiguation = Nothing
-            Else
-              If disambiguation = Nothing And Not srcSquare Is Nothing
-                Return Nothing
-              End If 
-              srcSquare = trySrc
-            End If
-          End If
-          srcx = dstx + 2
-          srcy = dsty + 1
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8)  _
-              And ((board(srcy, srcx) = "N"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "n"c And color = "b"c))   
-            trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-            If disambiguation <> Nothing And trySrc.Contains(disambiguation)
-              srcSquare = trySrc
-              disambiguation = Nothing
-            Else
-              If disambiguation = Nothing And Not srcSquare Is Nothing
-                Return Nothing
-              End If 
-              srcSquare = trySrc
-            End If
-          End If
-          srcx = dstx - 2
-          srcy = dsty + 1
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "N"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "n"c And color = "b"c))   
-            trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-            If disambiguation <> Nothing And trySrc.Contains(disambiguation)
-              srcSquare = trySrc
-              disambiguation = Nothing
-            Else
-              If disambiguation = Nothing And Not srcSquare Is Nothing
-                Return Nothing
-              End If 
-              srcSquare = trySrc
-            End If
-          End If
-          srcx = dstx - 1
-          srcy = dsty + 2
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "N"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "n"c And color = "b"c))   
-            trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-            If disambiguation <> Nothing And trySrc.Contains(disambiguation)
-              srcSquare = trySrc
-              disambiguation = Nothing
-            Else
-              If disambiguation = Nothing And Not srcSquare Is Nothing
-                Return Nothing
-              End If 
-              srcSquare = trySrc
-            End If
-          End If
-          srcx = dstx - 1
-          srcy = dsty - 2
-          If (srcx >= 0 And srcx < 8) And (srcy >= 0 And srcy < 8) _
-              And ((board(srcy, srcx) = "N"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "n"c And color = "b"c))   
-            trySrc = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-            If disambiguation <> Nothing And trySrc.Contains(disambiguation)
-              srcSquare = trySrc
-              disambiguation = Nothing
-            Else
-              If disambiguation = Nothing And Not srcSquare Is Nothing
-                Return Nothing
-              End If 
-              srcSquare = trySrc
-            End If
-          End If
-        Case "P"c
-          If pieceCaptured
-          Else
-            srcx = dstx
-            srcy = dsty + pawnSgn
-            If (board(srcy, srcx) = "P"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "p"c And color = "b"c)
-              srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-            End If
-            If (dsty = 4 And color = "w"c) Or (dsty = 3 And color = "b"c)
-              If board(srcy, srcx) <> " "c
-                Return Nothing
-              End If
-              srcy += pawnSgn
-              If (board(srcy, srcx) = "P"c And color = "w"c) _
-                 Or (board(srcy, srcx) = "p"c And color = "b"c)
-                srcSquare = Convert.ToChar(Convert.ToInt32("a"c) + srcx) + Convert.ToString(8 - srcy)
-              End If
-            End If
-          End If
-      End Select
-    End If
-
-    ' Check disambiguity. It should have been resolved
-    ' and set to Nothing or remain empty
-    If srcSquare Is Nothing Or disambiguation <> Nothing
-      Return Nothing
-    End If
+    End If  
 
     ' Do the move
-    srcx = Convert.ToInt32(Convert.ToInt32(srcSquare(0)) - Convert.ToInt32("a"c))
-    srcy = 8 - Val(srcSquare(1))
+    Dim srcx = Convert.ToInt32(Convert.ToInt32(srcSquare(0)) - Convert.ToInt32("a"c))
+    Dim srcy = Convert.ToInt32("8"c) - Convert.ToInt32(srcSquare(1))
+    Dim dstx = Convert.ToInt32(Convert.ToInt32(destSquare(0)) - Convert.ToInt32("a"c))
+    Dim dsty = Convert.ToInt32("8"c) - Convert.ToInt32(destSquare(1))
     board(dsty, dstx) = board(srcy, srcx)
     board(srcy, srcx) = " "c
-
-    ' Check if the current color's king is in check (Unroll if the king is in check)
-
-    ' Commit the move
-    color = If(color = "w"c, "b"c, "w"c)
-    If piece = "P"c And (srcy - dsty) * (srcy - dsty) = 4
-      enPassant = Convert.ToChar(Convert.ToInt32("a"c) + dstx) + Convert.ToString(8 - dsty - pawnSgn)
-    Else
-      enPassant = "-"
+    If destSquare = enPassant And pieceCaptured And piece = "P"c
+      board(dstx, dsty + If(color = "w"c, 1, -1)) = " "c 
     End If
+    color = If(color = "w"c, "b"c, "w"c)
+
+    ' Check if the current color's king is in check (Unroll if the king is in check.
+    ' This includes the color change) 
+
+    ' Commit the move (En passant doesn't exist, for now)
+    enPassant = "-"
     If pieceCaptured
       Dim reservePiece = piece
       For i = 0 To promotedSquares.Count - 1
@@ -644,6 +795,11 @@ Class BughouseData
       End If
     Next
     ' Then, check for both check and checkmate to get suffix
+    ' Do this by temporarily switching colors and checking if there
+    ' is an attacker on the king, and if we can move out of the way.
+    ' In either case, switch the colors back and see if you can off
+    ' the sole attacker, if present, or if you're just screwed.
+
     Return ""
   End Function
 End Class
