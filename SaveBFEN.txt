@@ -1,0 +1,195 @@
+#If False Then
+  ' Return true iff parse was successful.
+  ' If failed, don't change the underlying structure.
+  '
+  ' ... Now that I think about it, FEN isn't sufficient to
+  ' restart a BugHouse game. By a long shot. Shoot.
+  ' Luckily, there's BFEN
+  Public Function ParseFEN(fen As String)
+    Dim tempData = New BughouseData()
+    Dim cursorX = 0
+    Dim cursorY = 0
+    Dim index = 0
+
+    While index < fen.Length AndAlso Char.IsWhiteSpace(fen(index))
+      index += 1
+    End While
+
+    ' Set up board
+    While index < fen.Length And cursorY < NRows
+      If PieceNames.Contains(Char.ToLower(fen(index)))
+        If cursorX >= NColumns
+          Return False
+        End If
+        tempData.board(cursorY, cursorX) = fen(index)
+        cursorX += 1
+        index += 1
+        Continue While
+      End If
+
+      If Char.IsDigit(fen(index)) And fen(index) <> "0"c
+        For i = 0 To Convert.ToInt32(fen(index)) - 1
+          If cursorX >= NColumns
+            Return False
+          End If
+          tempData.board(cursorY, cursorX) = " "c
+          cursorX += 1
+        Next
+        index += 1
+        Continue While
+      End If
+
+      If fen(index) = "/"c
+        cursorY += 1
+        If cursorX <> NColumns Or cursorY >= NRows
+         Return False
+        End If
+        cursorX = 0
+        index += 1
+        Continue While
+      End If
+
+      If Char.IsWhiteSpace(fen(index))
+        cursorY += 1
+        If cursorY <> NRows
+          Return False
+        End If
+        index += 1
+        Continue While
+      End If
+
+      Return False
+    End While
+
+    While index < fen.Length AndAlso Char.IsWhiteSpace(fen(index))
+      index += 1
+    End While
+
+    ' Determine color
+    If index >= fen.Length OrElse (fen(index) <> "w"c And fen(index) <> "b"c)
+      Return False
+    End If
+    tempData.color = fen(index)
+    index += 1
+
+    If index >= fen.Length OrElse Not Char.IsWhiteSpace(fen(index))
+      Return False
+    End If
+    While index < fen.Length AndAlso Char.IsWhiteSpace(fen(index))
+      index += 1
+    End While
+
+    ' Determine castling rights
+    If index >= fen.Length
+      Return False
+    End If
+    If fen(index) = "-"c
+      tempData.castlingRights = "-"
+      index += 1
+    Else
+      tempData.castlingRights = ""
+      While index < fen.Length AndAlso (Char.ToLower(fen(index)) = "k"c Or Char.ToLower(fen(index)) = "q"c)
+        If tempData.castlingRights.Contains(fen(index))
+          Return False
+        End If
+        tempData.castlingRights += fen(index)
+        index += 1
+      End While
+    End If
+
+    If index >= fen.Length OrElse Not Char.IsWhiteSpace(fen(index))
+      Return False
+    End If
+    While index < fen.Length AndAlso Char.IsWhiteSpace(fen(index))
+      index += 1
+    End While
+
+    ' Determine en passant square
+    If index >= fen.Length
+      Return False
+    End If
+    If fen(index) = "-"c
+      tempData.enPassant = "-"
+      index += 1
+    ElseIf index + 1 >= fen.Length _
+         OrElse (fen(index) >= "a"c And fen(index) <= "h"c) _
+         OrElse (fen(index + 1) >= "1"c And fen(index + 1) <= "8"c)
+      tempData.enPassant = fen.SubString(index, 2)
+      index += 2
+    End If
+
+    If Not Char.IsWhiteSpace(fen(index))
+      Return False
+    End If
+    While index < fen.Length AndAlso Char.IsWhiteSpace(fen(index))
+      index += 1
+    End While
+
+    ' Determine halfmove count
+    If index >= fen.Length OrElse Not Char.IsDigit(fen(index))
+      Return False
+    End If
+    If fen(index) = "0"c
+      tempData.halfmove = 0
+      index += 1
+    Else
+      tempData.halfmove = Convert.ToInt32(fen(index)) - Convert.ToInt32("0"c)
+      index += 1
+      While index < fen.Length AndAlso Char.IsDigit(fen(index))
+        Dim digitval = Convert.ToInt32(fen(index)) - Convert.ToInt32("0"c)
+        If (Integer.MaxValue - digitval) / 10 < tempData.halfmove
+          Return False
+        End If
+        tempData.halfmove = tempData.halfmove * 10 + digitval
+        index += 1
+      End While
+    End If
+
+    If Not Char.IsWhiteSpace(fen(index))
+      Return False
+    End If
+    While index < fen.Length AndAlso Char.IsWhiteSpace(fen(index))
+      index += 1
+    End While
+
+    ' Determine fullmove count
+    If index >= fen.Length OrElse Not Char.IsDigit(fen(index))
+      Return False
+    End If
+    If fen(index) = "0"c
+      tempData.fullmove = 0
+      index += 1
+    Else
+      tempData.fullmove = Convert.ToInt32(fen(index)) - Convert.ToInt32("0"c)
+      index += 1
+      While index < fen.Length AndAlso Char.IsDigit(fen(index))
+        Dim digitval = Convert.ToInt32(fen(index)) - Convert.ToInt32("0"c)
+        If (Integer.MaxValue - digitval) / 10 < tempData.fullmove
+          Return False
+        End If
+        tempData.fullmove = tempData.fullmove * 10 + digitval
+        index += 1
+      End While
+    End If
+
+    While index < fen.Length AndAlso Char.IsWhiteSpace(fen(index))
+      index += 1
+    End While
+    If index <> fen.Length
+      Return False
+    End If
+
+    ' Note that before you commit, you actually
+    ' have to check that the opposite color isn't
+    ' being checked. Do this later... 
+
+    Me.board = tempData.board
+    Me.enPassant = tempData.enPassant
+    Me.enPassant = tempData.enPassant
+    Me.color = tempData.color
+    Me.castlingRights = tempData.castlingRights
+    Me.fullmove = tempData.fullmove
+    Me.halfmove = tempData.halfmove
+    Return True
+  End Function
+#End If
